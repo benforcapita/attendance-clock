@@ -1,0 +1,41 @@
+{
+  "name": "attendance-clock",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "npm@11.9.0",
+  "engines": {
+    "node": "^22.13.0 || >=24.0.0 <25",
+    "npm": ">=10.0.0 <12"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "preview": "vite preview",
+    "preview:e2e": "vite preview --host 127.0.0.1 --port 4173 --strictPort",
+    "test:e2e:config": "node scripts/verify-e2e-config.mjs",
+    "test:e2e": "npm run build && playwright test",
+    "test:release": "npm run typecheck && npm run test:run && npm run test:e2e:config && npm run test:e2e"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "6.0.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "vite": "8.2.1",
+    "vite-plugin-pwa": "1.3.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.2",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "fake-indexeddb": "6.2.5",
+    "jsdom": "30.0.1",
+    "playwright": "1.62.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}
