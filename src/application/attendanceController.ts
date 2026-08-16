@@ -7,7 +7,10 @@ import {
   type AttendanceState,
 } from '../domain/attendance';
 import { parseAttendanceCsv, serializeAttendanceCsv } from '../csv/attendanceCsv';
-import { FilePermissionError, type FileAdapter } from '../files/fileAdapter';
+import {
+  FilePermissionError,
+  type FileAdapter,
+} from '../files/fileAdapter';
 import {
   type AttendanceDb,
   type PersistenceMeta,
@@ -26,9 +29,12 @@ export class PendingImportError extends Error {
   }
 }
 
+const CSV_FILE_NAME = 'attendance.csv';
+
 type CommitTarget = {
   fileName?: string | null;
   fileHandle?: FileSystemFileHandle;
+  directoryHandle?: FileSystemDirectoryHandle;
 };
 
 function initialSnapshot(): ControllerSnapshot {
@@ -104,13 +110,13 @@ export class AttendanceController {
     await this.enqueueMutation(() => this.commit(deleteEntryFromState(this.currentState(), date)));
   }
 
-  async chooseOrCreateFile(): Promise<void> {
+  async chooseFolder(): Promise<void> {
     this.ensureInitialized();
     try {
-      const file = await this.files.chooseOrCreate();
+      const folder = await this.files.chooseFolder();
       await this.enqueueMutation(() => this.commit(
         this.snapshot.state,
-        { fileName: file.name, fileHandle: file.handle },
+        { fileName: CSV_FILE_NAME, directoryHandle: folder.handle },
       ));
     } catch (error) {
       this.setError(errorMessage(error));
@@ -148,6 +154,9 @@ export class AttendanceController {
       const next: StoredSnapshot = imported.handle === undefined
         ? { state, meta }
         : { state, meta, fileHandle: imported.handle };
+      if (this.snapshot.directoryHandle) {
+        next.directoryHandle = this.snapshot.directoryHandle;
+      }
       try {
         await this.db.replace(next);
       } catch (error) {
@@ -177,9 +186,12 @@ export class AttendanceController {
         fileName,
         syncState: 'synced',
       };
-      const synchronized: StoredSnapshot = this.snapshot.fileHandle === undefined
-        ? { state: this.snapshot.state, meta }
-        : { state: this.snapshot.state, meta, fileHandle: this.snapshot.fileHandle };
+      const synchronized: StoredSnapshot = {
+        state: this.snapshot.state,
+        meta,
+        ...(this.snapshot.fileHandle ? { fileHandle: this.snapshot.fileHandle } : {}),
+        ...(this.snapshot.directoryHandle ? { directoryHandle: this.snapshot.directoryHandle } : {}),
+      };
       try {
         await this.db.replace(synchronized);
       } catch (error) {
@@ -192,6 +204,10 @@ export class AttendanceController {
 
   async requestFilePermission(): Promise<void> {
     this.ensureInitialized();
+    if (this.snapshot.directoryHandle) {
+      await this.requestFolderPermission();
+      return;
+    }
     const handle = this.snapshot.fileHandle;
     if (!handle) {
       await this.enqueueMutation(() => this.markPermissionRequired('No attendance file is selected'));
@@ -225,29 +241,78 @@ export class AttendanceController {
     });
   }
 
+  private async requestFolderPermission(): Promise<void> {
+    const handle = this.snapshot.directoryHandle;
+    if (!handle) return;
+
+    let granted: boolean;
+    try {
+      granted = await this.files.requestFolderWritePermission(handle);
+    } catch (error) {
+      if (error instanceof FilePermissionError) {
+        await this.enqueueMutation(() => this.markPermissionRequired(errorMessage(error)));
+        return;
+      }
+      this.setError(errorMessage(error));
+      throw error;
+    }
+
+    await this.enqueueMutation(async () => {
+      if (this.snapshot.directoryHandle !== handle) {
+        const error = new Error('Attendance folder changed while permission was requested');
+        this.setError(error.message);
+        throw error;
+      }
+      if (granted) {
+        await this.commit(this.snapshot.state);
+        return;
+      }
+      await this.markPermissionRequired('Permission to write the attendance CSV was denied');
+    });
+  }
+
   private async commit(nextState: AttendanceState, target: CommitTarget = {}): Promise<void> {
     this.ensureInitialized();
     const fileName = 'fileName' in target ? target.fileName ?? null : this.snapshot.meta.fileName;
     const fileHandle = 'fileHandle' in target ? target.fileHandle : this.snapshot.fileHandle;
+    const directoryHandle = 'directoryHandle' in target ? target.directoryHandle : this.snapshot.directoryHandle;
     const meta: PersistenceMeta = {
       fileName,
       syncState: 'pending',
       revision: this.snapshot.meta.revision + 1,
     };
 
-    await this.db.save(nextState, meta, fileHandle);
-    this.setSnapshot({ state: nextState, meta, ...(fileHandle ? { fileHandle } : {}), initialized: true, error: null });
+    await this.db.save(nextState, meta, fileHandle, directoryHandle);
+    this.setSnapshot({
+      state: nextState,
+      meta,
+      ...(fileHandle ? { fileHandle } : {}),
+      ...(directoryHandle ? { directoryHandle } : {}),
+      initialized: true,
+      error: null,
+    });
 
-    if (!fileHandle) return;
+    const hasTarget = Boolean(fileHandle) || Boolean(directoryHandle);
+    if (!hasTarget) return;
 
     try {
-      await this.files.writeDirect(fileHandle, serializeAttendanceCsv(nextState));
+      if (directoryHandle) {
+        await this.files.writeDirectInFolder(directoryHandle, CSV_FILE_NAME, serializeAttendanceCsv(nextState));
+      } else if (fileHandle) {
+        await this.files.writeDirect(fileHandle, serializeAttendanceCsv(nextState));
+      }
       const syncedMeta: PersistenceMeta = { ...meta, syncState: 'synced' };
-      await this.db.replace({ state: nextState, meta: syncedMeta, fileHandle });
+      await this.db.replace({
+        state: nextState,
+        meta: syncedMeta,
+        ...(fileHandle ? { fileHandle } : {}),
+        ...(directoryHandle ? { directoryHandle } : {}),
+      });
       this.setSnapshot({
         state: nextState,
         meta: syncedMeta,
-        fileHandle,
+        ...(fileHandle ? { fileHandle } : {}),
+        ...(directoryHandle ? { directoryHandle } : {}),
         initialized: true,
         error: null,
       });
@@ -263,14 +328,18 @@ export class AttendanceController {
   private async markPermissionRequired(error: string): Promise<void> {
     const meta: PersistenceMeta = { ...this.snapshot.meta, syncState: 'permission-required' };
     try {
-      const snapshot: StoredSnapshot = this.snapshot.fileHandle === undefined
-        ? { state: this.snapshot.state, meta }
-        : { state: this.snapshot.state, meta, fileHandle: this.snapshot.fileHandle };
+      const snapshot: StoredSnapshot = {
+        state: this.snapshot.state,
+        meta,
+        ...(this.snapshot.fileHandle ? { fileHandle: this.snapshot.fileHandle } : {}),
+        ...(this.snapshot.directoryHandle ? { directoryHandle: this.snapshot.directoryHandle } : {}),
+      };
       await this.db.replace(snapshot);
       this.setSnapshot({
         state: this.snapshot.state,
         meta,
         ...(this.snapshot.fileHandle ? { fileHandle: this.snapshot.fileHandle } : {}),
+        ...(this.snapshot.directoryHandle ? { directoryHandle: this.snapshot.directoryHandle } : {}),
         initialized: true,
         error,
       });

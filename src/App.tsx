@@ -1,7 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import { AttendanceController } from './application/attendanceController';
-import { FileMenu } from './components/FileMenu';
 import { HistoryView } from './components/HistoryView';
+import { SettingsDrawer } from './components/SettingsDrawer';
 import { TodayView } from './components/TodayView';
 import { BrowserFileAdapter } from './files/fileAdapter';
 import { useAttendance } from './hooks/useAttendance';
@@ -12,6 +12,7 @@ const controller = new AttendanceController(new AttendanceDb(), files);
 
 function App() {
   const [activeTab, setActiveTab] = useState<'today' | 'history'>('today');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const todayTabRef = useRef<HTMLButtonElement>(null);
   const historyTabRef = useRef<HTMLButtonElement>(null);
   const {
@@ -20,7 +21,7 @@ function App() {
     clockOut,
     updateEntry,
     deleteEntry,
-    chooseOrCreateFile,
+    chooseFolder,
     importCsv,
     exportCsv,
     requestFilePermission,
@@ -91,14 +92,14 @@ function App() {
             History
           </button>
         </nav>
-        <FileMenu
-          snapshot={snapshot}
-          directAccessSupported={files.supportsDirectAccess()}
-          onChooseOrCreate={chooseOrCreateFile}
-          onImport={importCsv}
-          onExport={exportCsv}
-          onGrantAccess={requestFilePermission}
-        />
+        <button
+          className="settings-button"
+          type="button"
+          aria-haspopup="dialog"
+          onClick={() => setSettingsOpen(true)}
+        >
+          ⚙ Settings
+        </button>
       </header>
       {activeTab === 'today' ? (
         <div id="today-panel" role="tabpanel" aria-labelledby="today-tab">
@@ -109,6 +110,17 @@ function App() {
           <HistoryView entries={snapshot.state.entries} onUpdate={updateEntry} onDelete={deleteEntry} />
         </div>
       )}
+      <SettingsDrawer
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        snapshot={snapshot}
+        folderSupported={files.supportsDirectories()}
+        fileSupported={files.supportsDirectAccess()}
+        onChooseFolder={chooseFolder}
+        onImport={importCsv}
+        onExport={exportCsv}
+        onGrantAccess={requestFilePermission}
+      />
     </main>
   );
 }

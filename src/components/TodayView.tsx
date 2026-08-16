@@ -107,8 +107,19 @@ export function TodayView({ snapshot, onClockIn, onClockOut }: TodayViewProps) {
               <strong>{formatDuration(duration ?? 0)}</strong>
             </p>
           )}
-          <button className="clock-action" type="button" onClick={() => void runClockAction()} disabled={isClocking}>
-            {isClocking ? busyLabel : primaryLabel}
+          <button
+            className={`clock-button ${activeEntry ? 'clock-button--out' : 'clock-button--in'}`}
+            type="button"
+            aria-label={isClocking ? busyLabel : primaryLabel}
+            onClick={() => void runClockAction()}
+            disabled={isClocking}
+          >
+            <span className="clock-button__inner">
+              <span className="clock-button__icon" aria-hidden="true">
+                {activeEntry ? '⏹' : '▶'}
+              </span>
+              <span className="clock-button__label">{isClocking ? busyLabel : primaryLabel}</span>
+            </span>
           </button>
         </div>
 

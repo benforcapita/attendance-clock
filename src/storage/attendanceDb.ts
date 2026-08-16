@@ -12,6 +12,7 @@ export type StoredSnapshot = {
   state: AttendanceState;
   meta: PersistenceMeta;
   fileHandle?: FileSystemFileHandle;
+  directoryHandle?: FileSystemDirectoryHandle;
 };
 
 const STORE_NAME = 'app';
@@ -68,8 +69,18 @@ export class AttendanceDb {
     }
   }
 
-  async save(state: AttendanceState, meta: PersistenceMeta, fileHandle?: FileSystemFileHandle): Promise<void> {
-    const snapshot = fileHandle === undefined ? { state, meta } : { state, meta, fileHandle };
+  async save(
+    state: AttendanceState,
+    meta: PersistenceMeta,
+    fileHandle?: FileSystemFileHandle,
+    directoryHandle?: FileSystemDirectoryHandle,
+  ): Promise<void> {
+    const snapshot: StoredSnapshot = {
+      state,
+      meta,
+      ...(fileHandle ? { fileHandle } : {}),
+      ...(directoryHandle ? { directoryHandle } : {}),
+    };
     await this.write(snapshot);
   }
 

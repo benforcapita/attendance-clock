@@ -4,12 +4,22 @@ export type ImportedFile = {
   handle?: FileSystemFileHandle;
 };
 
+export type DirectoryFile = {
+  directoryHandle: FileSystemDirectoryHandle;
+  name: string;
+  text: string;
+};
+
 export interface FileAdapter {
   supportsDirectAccess(): boolean;
+  supportsDirectories(): boolean;
+  chooseFolder(): Promise<{ name: string; handle: FileSystemDirectoryHandle }>;
   chooseOrCreate(): Promise<ImportedFile>;
   importFile(): Promise<ImportedFile>;
   writeDirect(handle: FileSystemFileHandle, csv: string): Promise<void>;
+  writeDirectInFolder(handle: FileSystemDirectoryHandle, name: string, csv: string): Promise<void>;
   requestWritePermission(handle: FileSystemFileHandle): Promise<boolean>;
+  requestFolderWritePermission(handle: FileSystemDirectoryHandle): Promise<boolean>;
   exportDownload(name: string, csv: string): Promise<void>;
 }
 
@@ -28,6 +38,18 @@ export class BrowserFileAdapter implements FileAdapter {
   supportsDirectAccess(): boolean {
     return typeof window.showSaveFilePicker === 'function'
       && typeof window.showOpenFilePicker === 'function';
+  }
+
+  supportsDirectories(): boolean {
+    return typeof window.showDirectoryPicker === 'function';
+  }
+
+  async chooseFolder(): Promise<{ name: string; handle: FileSystemDirectoryHandle }> {
+    if (typeof window.showDirectoryPicker !== 'function') {
+      throw new FilePermissionError('Folder selection is unavailable in this browser');
+    }
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    return { name: handle.name, handle };
   }
 
   async chooseOrCreate(): Promise<ImportedFile> {
@@ -84,8 +106,25 @@ export class BrowserFileAdapter implements FileAdapter {
     }
   }
 
+  async writeDirectInFolder(handle: FileSystemDirectoryHandle, name: string, csv: string): Promise<void> {
+    let fileHandle: FileSystemFileHandle;
+    try {
+      fileHandle = await handle.getFileHandle(name, { create: true });
+    } catch (error) {
+      throw this.normalizePermissionError(error);
+    }
+    await this.writeDirect(fileHandle, csv);
+  }
+
   async requestWritePermission(handle: FileSystemFileHandle): Promise<boolean> {
     if (await this.hasWritePermission(handle)) {
+      return true;
+    }
+    return (await handle.requestPermission({ mode: 'readwrite' })) === 'granted';
+  }
+
+  async requestFolderWritePermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
+    if (await this.hasFolderWritePermission(handle)) {
       return true;
     }
     return (await handle.requestPermission({ mode: 'readwrite' })) === 'granted';
@@ -115,6 +154,10 @@ export class BrowserFileAdapter implements FileAdapter {
   }
 
   private async hasWritePermission(handle: FileSystemFileHandle): Promise<boolean> {
+    return (await handle.queryPermission({ mode: 'readwrite' })) === 'granted';
+  }
+
+  private async hasFolderWritePermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
     return (await handle.queryPermission({ mode: 'readwrite' })) === 'granted';
   }
 

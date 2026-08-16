@@ -38,16 +38,22 @@ function createDb(snapshot: StoredSnapshot = DEFAULT_SNAPSHOT) {
 function createFiles() {
   return {
     supportsDirectAccess: vi.fn().mockReturnValue(true),
+    chooseFolder: vi.fn(),
     chooseOrCreate: vi.fn(),
     importFile: vi.fn(),
     writeDirect: vi.fn().mockResolvedValue(undefined),
+    writeDirectInFolder: vi.fn().mockResolvedValue(undefined),
     requestWritePermission: vi.fn().mockResolvedValue(true),
+    requestFolderWritePermission: vi.fn().mockResolvedValue(true),
     exportDownload: vi.fn().mockResolvedValue(undefined),
   } as unknown as FileAdapter & {
+    chooseFolder: ReturnType<typeof vi.fn>;
     chooseOrCreate: ReturnType<typeof vi.fn>;
     importFile: ReturnType<typeof vi.fn>;
     writeDirect: ReturnType<typeof vi.fn>;
+    writeDirectInFolder: ReturnType<typeof vi.fn>;
     requestWritePermission: ReturnType<typeof vi.fn>;
+    requestFolderWritePermission: ReturnType<typeof vi.fn>;
     exportDownload: ReturnType<typeof vi.fn>;
   };
 }
@@ -147,14 +153,17 @@ describe('AttendanceController', () => {
     }));
   });
 
-  it('creates a chosen file and writes the current CSV to it', async () => {
-    const handle = { name: 'attendance.csv' } as FileSystemFileHandle;
-    files.chooseOrCreate.mockResolvedValue({ name: 'attendance.csv', text: '', handle } satisfies ImportedFile);
+  it('chooses a folder and writes the current CSV into it', async () => {
+    const dirHandle = { name: 'attendance' } as FileSystemDirectoryHandle;
+    files.chooseFolder.mockResolvedValue({ name: 'attendance', handle: dirHandle });
 
-    await controller.chooseOrCreateFile();
+    await controller.chooseFolder();
 
-    expect(files.writeDirect).toHaveBeenCalledWith(handle, 'date,clock_in,clock_out\n');
-    expect(controller.getSnapshot().meta).toEqual({ fileName: 'attendance.csv', syncState: 'synced', revision: 1 });
+    expect(files.writeDirectInFolder).toHaveBeenCalledWith(dirHandle, 'attendance.csv', 'date,clock_in,clock_out\n');
+    expect(controller.getSnapshot()).toMatchObject({
+      meta: { fileName: 'attendance.csv', syncState: 'synced', revision: 1 },
+      directoryHandle: dirHandle,
+    });
   });
 
   it('renews permission and syncs the existing local state', async () => {
@@ -483,6 +492,7 @@ describe('AttendanceController', () => {
     expect(db.save).toHaveBeenLastCalledWith(
       EMPTY_STATE,
       { fileName: null, syncState: 'pending', revision: 3 },
+      undefined,
       undefined,
     );
   });

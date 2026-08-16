@@ -8,7 +8,7 @@ type AttendanceActions = {
   clockOut: () => Promise<void>;
   updateEntry: (originalDate: string, entry: AttendanceEntry) => Promise<void>;
   deleteEntry: (date: string) => Promise<void>;
-  chooseOrCreateFile: () => Promise<void>;
+  chooseFolder: () => Promise<void>;
   importCsv: (options?: { discardPending?: boolean }) => Promise<void>;
   exportCsv: () => Promise<void>;
   requestFilePermission: () => Promise<void>;
@@ -36,7 +36,7 @@ export function useAttendance(controller: AttendanceController): AttendanceActio
     clockOut: () => controller.clockOut(),
     updateEntry: (originalDate, entry) => controller.updateEntry(originalDate, entry),
     deleteEntry: (date) => controller.deleteEntry(date),
-    chooseOrCreateFile: () => controller.chooseOrCreateFile(),
+    chooseFolder: () => controller.chooseFolder(),
     importCsv: (options) => controller.importCsv(options),
     exportCsv: () => controller.exportCsv(),
     requestFilePermission: () => controller.requestFilePermission(),
