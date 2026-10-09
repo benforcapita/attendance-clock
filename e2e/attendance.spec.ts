@@ -22,6 +22,7 @@ test('cached application reloads offline', async ({ page, context }) => {
   await page.goto('/attendance-clock/');
   await page.waitForFunction(() => Boolean(navigator.serviceWorker?.controller));
   await page.getByRole('button', { name: 'Clock in' }).click();
+  await expect(page.getByRole('button', { name: 'Clock out' })).toBeEnabled();
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Attendance Clock' })).toBeVisible();

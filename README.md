@@ -129,3 +129,15 @@ Use one active tab at a time. This release does not coordinate simultaneous
 edits across browser tabs. Physical iPhone Home Screen installation and native
 folder-picker permission prompts remain manual release checks in addition to
 browser automation.
+
+### Offline verification
+
+Playwright is pinned to 1.64.0, which includes the fix for its earlier WebKit
+service-worker offline-emulation bug ([upstream fix](https://github.com/microsoft/playwright/pull/42894)).
+Both browsers run the offline tests without skips.
+
+In addition to offline emulation, a separate test runs on both engines: it stops
+a dedicated origin server, proves that a fresh non-service-worker context
+cannot load it, then requires the cached app to reload with a successful
+service-worker response and persist a clock-out. Airplane mode on physical iOS
+remains a manual acceptance check.
