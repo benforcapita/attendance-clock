@@ -64,15 +64,26 @@ date,clock_in,clock_out
 ```
 
 Dates use `YYYY-MM-DD`, times use 24-hour `HH:mm`, and an empty `clock_out`
-marks the single active session. An overnight shift is represented by a
-clock-out earlier than its clock-in time. Invalid imports are rejected before
-they replace the current local data.
+marks the single active session. There is one entry per calendar day; once
+finished, correct the entry in **History** instead of starting another session.
+An overnight shift shorter than 24 hours is represented by a clock-out earlier
+than its clock-in time. Clock-out rejects a reversed system time or a stale
+session of 24 hours or more because the CSV cannot represent its end date.
+Correct such a session in History. Invalid imports are rejected before they
+replace the current local data.
 
 ## Desktop workflow
 
-On browsers with File System Access support, use **Choose or create CSV** to
-select the attendance file. Changes are first committed locally, then written
-to that file. If permission must be renewed, the app shows **Grant access**;
+Open **Settings** for file actions. On browsers with folder access support,
+use **Choose folder** to save `attendance.csv` automatically. Choosing a folder
+checks any existing `attendance.csv` first and refuses to replace different
+contents; import that file first or choose an empty folder. Changes are first
+committed locally, then written to the selected folder.
+
+**Import CSV** replaces the local working copy only after validation. It also
+clears the previous folder destination so importing a backup cannot silently
+write into an unrelated folder. On desktop, importing a file may retain its
+file handle for subsequent writes; on iOS it remains a local copy. If permission must be renewed, the app shows **Grant access**;
 if a write cannot finish, the app keeps the local mutation and identifies it as
 pending rather than discarding it.
 
@@ -92,3 +103,41 @@ devices, or importing a replacement file. Import/export is the intentional
 cross-device transfer mechanism: this app has no account, cloud sync, or
 automatic device-to-device transfer. Keep backups somewhere you control, such
 as Files or your approved storage provider.
+
+## Release and demo builds
+
+Pull requests run the complete `test:release` gate on Chromium desktop and
+WebKit with an iPhone viewport. The Pages deployment runs the same gate before
+uploading its artifact; failed tests prevent publication. Browser evidence is
+available as the `attendance-browser-evidence` artifact on verification runs.
+
+The default build targets GitHub Pages at `/attendance-clock/`. For an isolated
+portfolio preview, build with a separate output folder and portable asset URLs:
+
+```bash
+ATTENDANCE_BASE_PATH=./ npm run build -- --outDir demo-dist
+```
+
+Serve previews over HTTP on localhost or HTTPS. Do not open the files with a
+`file:` URL: installability, durable storage and offline caching require a
+secure origin. The app starts empty; `demo/synthetic-attendance.csv` is optional
+fictional data to import through Settings. Demo builds never embed attendance
+records. Browser data is local to the origin, so use a separate origin for
+previews when you also use a production copy.
+
+Use one active tab at a time. This release does not coordinate simultaneous
+edits across browser tabs. Physical iPhone Home Screen installation and native
+folder-picker permission prompts remain manual release checks in addition to
+browser automation.
+
+### Offline verification
+
+Playwright is pinned to 1.64.0, which includes the fix for its earlier WebKit
+service-worker offline-emulation bug ([upstream fix](https://github.com/microsoft/playwright/pull/42894)).
+Both browsers run the offline tests without skips.
+
+In addition to offline emulation, a separate test runs on both engines: it stops
+a dedicated origin server, proves that a fresh non-service-worker context
+cannot load it, then requires the cached app to reload with a successful
+service-worker response and persist a clock-out. Airplane mode on physical iOS
+remains a manual acceptance check.

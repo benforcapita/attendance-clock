@@ -73,8 +73,9 @@ export function TodayView({ snapshot, onClockIn, onClockOut }: TodayViewProps) {
     ? elapsedMinutes(displayedEntry, now)
     : displayedEntry ? sessionMinutes(displayedEntry) : null;
   const status = activeEntry ? `Working since ${activeEntry.clockIn}` : 'Not working';
-  const primaryLabel = activeEntry ? 'Clock out' : 'Clock in';
-  const busyLabel = activeEntry ? 'Clocking out…' : 'Clocking in…';
+  const dayCompleted = !activeEntry && completedToday !== null;
+  const primaryLabel = activeEntry ? 'Clock out' : dayCompleted ? 'Day completed' : 'Clock in';
+  const busyLabel = 'Saving…';
 
   const runClockAction = async () => {
     setIsClocking(true);
@@ -112,7 +113,7 @@ export function TodayView({ snapshot, onClockIn, onClockOut }: TodayViewProps) {
             type="button"
             aria-label={isClocking ? busyLabel : primaryLabel}
             onClick={() => void runClockAction()}
-            disabled={isClocking}
+            disabled={isClocking || dayCompleted}
           >
             <span className="clock-button__inner">
               <span className="clock-button__icon" aria-hidden="true">
@@ -121,6 +122,7 @@ export function TodayView({ snapshot, onClockIn, onClockOut }: TodayViewProps) {
               <span className="clock-button__label">{isClocking ? busyLabel : primaryLabel}</span>
             </span>
           </button>
+          {dayCompleted && <p className="settings-section__hint">One entry is recorded per day. You can correct today’s entry in History.</p>}
         </div>
 
         <aside className="today-card today-card--details" aria-label="Today's attendance details">
@@ -138,7 +140,7 @@ export function TodayView({ snapshot, onClockIn, onClockOut }: TodayViewProps) {
               <dd>{duration === null || duration === undefined ? '—' : formatDuration(duration)}</dd>
             </div>
           </dl>
-          <PersistenceBadge meta={snapshot.meta} />
+          <PersistenceBadge meta={snapshot.meta} saving={isClocking} />
         </aside>
       </div>
 

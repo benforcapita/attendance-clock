@@ -3,27 +3,30 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  base: '/attendance-clock/',
+  base: process.env.ATTENDANCE_BASE_PATH || '/attendance-clock/',
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        navigateFallback: '/attendance-clock/index.html',
+        navigateFallback: 'index.html',
       },
       manifest: {
         name: 'Attendance Clock',
         short_name: 'Clock',
         display: 'standalone',
-        start_url: '/attendance-clock/',
+        start_url: './',
+        scope: './',
+        theme_color: '#2457df',
+        background_color: '#f4f6fa',
         icons: [
           {
-            src: '/attendance-clock/icons/icon-192.png',
+            src: 'icons/icon-192.png',
             sizes: '192x192',
             type: 'image/png',
           },
           {
-            src: '/attendance-clock/icons/icon-512.png',
+            src: 'icons/icon-512.png',
             sizes: '512x512',
             type: 'image/png',
           },

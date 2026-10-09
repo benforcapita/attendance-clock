@@ -27,6 +27,14 @@ describe('attendance domain', () => {
     expect(sessionMinutes({ date: '2026-08-15', clockIn: '22:00', clockOut: '06:00' })).toBe(480);
   });
 
+  it('rejects closing before clock-in or beyond the representable CSV duration', () => {
+    const active = clockIn(empty, new Date('2026-08-15T09:00:00'));
+    expect(() => clockOut(active, new Date('2026-08-15T08:00:00'))).toThrow('before clock-in');
+    expect(() => clockOut(active, new Date('2026-08-16T09:00:00'))).toThrow('24 hours');
+    expect(() => clockOut(active, new Date('2026-08-17T10:00:00'))).toThrow('24 hours');
+    expect(clockOut(active, new Date('2026-08-16T08:00:00')).entries[0].clockOut).toBe('08:00');
+  });
+
   it('rejects invalid calendar dates and duplicate dates', () => {
     expect(() => validateState({ entries: [{ date: '2026-02-29', clockIn: '09:00', clockOut: null }] })).toThrow();
     expect(() => validateState({ entries: [

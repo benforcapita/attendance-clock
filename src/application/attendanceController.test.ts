@@ -166,6 +166,50 @@ describe('AttendanceController', () => {
     });
   });
 
+  it('refuses to overwrite different attendance data in a newly chosen folder', async () => {
+    const dirHandle = { name: 'existing records' } as FileSystemDirectoryHandle;
+    files.chooseFolder.mockResolvedValue({ name: dirHandle.name, handle: dirHandle, existingCsv: CSV });
+    await expect(controller.chooseFolder()).rejects.toThrow('already contains attendance.csv');
+    expect(files.writeDirectInFolder).not.toHaveBeenCalled();
+    expect(db.save).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().directoryHandle).toBeUndefined();
+  });
+
+  it('recognizes equivalent CSV data with BOM and CRLF when choosing its folder', async () => {
+    db = createDb({ ...DEFAULT_SNAPSHOT, state: { entries: [ENTRY] } });
+    controller = new AttendanceController(db, files);
+    await controller.initialize();
+    const dirHandle = { name: 'Records' } as FileSystemDirectoryHandle;
+    files.chooseFolder.mockResolvedValue({ name: dirHandle.name, handle: dirHandle, existingCsv: '\uFEFF' + CSV.replaceAll('\n', '\r\n') });
+    await controller.chooseFolder();
+    expect(files.writeDirectInFolder).toHaveBeenCalledWith(dirHandle, 'attendance.csv', CSV);
+  });
+
+  it.each(['pending', 'permission-required'] as const)('a backup download does not clear a %s folder write failure', async (syncState) => {
+    const directoryHandle = { name: 'Records' } as FileSystemDirectoryHandle;
+    db = createDb({ state: { entries: [ENTRY] }, meta: { fileName: 'attendance.csv', syncState, revision: 3 }, directoryHandle });
+    controller = new AttendanceController(db, files);
+    await controller.initialize();
+    await controller.exportCsv();
+    expect(files.exportDownload).toHaveBeenCalledWith('attendance.csv', CSV);
+    expect(controller.getSnapshot().meta.syncState).toBe(syncState);
+    expect(controller.getSnapshot().directoryHandle).toBe(directoryHandle);
+    expect(db.replace).not.toHaveBeenCalled();
+  });
+
+  it('disconnects an old folder when importing a different CSV backup', async () => {
+    const oldFolder = { name: 'old folder' } as FileSystemDirectoryHandle;
+    db = createDb({ ...DEFAULT_SNAPSHOT, directoryHandle: oldFolder });
+    controller = new AttendanceController(db, files);
+    await controller.initialize();
+    files.importFile.mockResolvedValue({ name: 'new.csv', text: CSV });
+    await controller.importCsv();
+    await controller.updateEntry(ENTRY.date, { ...ENTRY, clockOut: '18:00' });
+    expect(controller.getSnapshot().directoryHandle).toBeUndefined();
+    expect(files.writeDirectInFolder).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().meta.syncState).toBe('pending');
+  });
+
   it('renews permission and syncs the existing local state', async () => {
     const handle = { name: 'attendance.csv' } as FileSystemFileHandle;
     db = createDb({
