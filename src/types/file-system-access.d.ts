@@ -1,11 +1,7 @@
 interface FileSystemWritableFileStream {
   write(data: string): Promise<void>;
   close(): Promise<void>;
-}
-
-interface FileSystemWritableFileStream {
-  write(data: string): Promise<void>;
-  close(): Promise<void>;
+  abort(): Promise<void>;
 }
 
 interface FileSystemFileHandle {

@@ -13,7 +13,7 @@ export type DirectoryFile = {
 export interface FileAdapter {
   supportsDirectAccess(): boolean;
   supportsDirectories(): boolean;
-  chooseFolder(): Promise<{ name: string; handle: FileSystemDirectoryHandle }>;
+  chooseFolder(): Promise<{ name: string; handle: FileSystemDirectoryHandle; existingCsv?: string }>;
   chooseOrCreate(): Promise<ImportedFile>;
   importFile(): Promise<ImportedFile>;
   writeDirect(handle: FileSystemFileHandle, csv: string): Promise<void>;
@@ -44,12 +44,21 @@ export class BrowserFileAdapter implements FileAdapter {
     return typeof window.showDirectoryPicker === 'function';
   }
 
-  async chooseFolder(): Promise<{ name: string; handle: FileSystemDirectoryHandle }> {
+  async chooseFolder(): Promise<{ name: string; handle: FileSystemDirectoryHandle; existingCsv?: string }> {
     if (typeof window.showDirectoryPicker !== 'function') {
       throw new FilePermissionError('Folder selection is unavailable in this browser');
     }
     const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
-    return { name: handle.name, handle };
+    try {
+      const existing = await handle.getFileHandle('attendance.csv');
+      const file = await existing.getFile();
+      return { name: handle.name, handle, existingCsv: await file.text() };
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'NotFoundError') {
+        return { name: handle.name, handle };
+      }
+      throw error;
+    }
   }
 
   async chooseOrCreate(): Promise<ImportedFile> {
@@ -89,20 +98,18 @@ export class BrowserFileAdapter implements FileAdapter {
       throw this.normalizePermissionError(error);
     }
 
-    let writeFailed = false;
     try {
       await writable.write(csv);
     } catch (error) {
-      writeFailed = true;
+      // close() commits the temporary file. Abort on write failure so the
+      // previous CSV is preserved, even if cleanup itself also fails.
+      try { await writable.abort(); } catch { /* Preserve the original error. */ }
       throw this.normalizePermissionError(error);
-    } finally {
-      try {
-        await writable.close();
-      } catch (error) {
-        if (!writeFailed) {
-          throw this.normalizePermissionError(error);
-        }
-      }
+    }
+    try {
+      await writable.close();
+    } catch (error) {
+      throw this.normalizePermissionError(error);
     }
   }
 

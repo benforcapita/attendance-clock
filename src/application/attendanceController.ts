@@ -114,10 +114,15 @@ export class AttendanceController {
     this.ensureInitialized();
     try {
       const folder = await this.files.chooseFolder();
-      await this.enqueueMutation(() => this.commit(
-        this.snapshot.state,
-        { fileName: CSV_FILE_NAME, directoryHandle: folder.handle },
-      ));
+      await this.enqueueMutation(async () => {
+        if (folder.existingCsv !== undefined
+          && serializeAttendanceCsv(parseAttendanceCsv(folder.existingCsv)) !== serializeAttendanceCsv(this.snapshot.state)) {
+          throw new Error('This folder already contains attendance.csv. Import that file first, or choose an empty folder to keep both copies safe.');
+        }
+        await this.commit(this.snapshot.state, {
+          fileName: CSV_FILE_NAME, directoryHandle: folder.handle, fileHandle: undefined,
+        });
+      });
     } catch (error) {
       this.setError(errorMessage(error));
       throw error;
@@ -154,9 +159,6 @@ export class AttendanceController {
       const next: StoredSnapshot = imported.handle === undefined
         ? { state, meta }
         : { state, meta, fileHandle: imported.handle };
-      if (this.snapshot.directoryHandle) {
-        next.directoryHandle = this.snapshot.directoryHandle;
-      }
       try {
         await this.db.replace(next);
       } catch (error) {
@@ -180,6 +182,10 @@ export class AttendanceController {
 
     await this.enqueueMutation(async () => {
       if (this.snapshot.meta.revision !== exportedRevision) return;
+      // A downloaded backup does not repair an automatic file/folder write.
+      // Retain its pending/permission status (and error) so recovery stays visible.
+      if ((this.snapshot.fileHandle || this.snapshot.directoryHandle)
+        && this.snapshot.meta.syncState !== 'synced') return;
 
       const meta: PersistenceMeta = {
         ...this.snapshot.meta,

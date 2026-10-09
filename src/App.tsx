@@ -115,7 +115,6 @@ function App() {
         onClose={() => setSettingsOpen(false)}
         snapshot={snapshot}
         folderSupported={files.supportsDirectories()}
-        fileSupported={files.supportsDirectAccess()}
         onChooseFolder={chooseFolder}
         onImport={importCsv}
         onExport={exportCsv}

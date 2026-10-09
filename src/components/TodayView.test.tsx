@@ -52,7 +52,8 @@ describe('TodayView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Clock in' }));
 
-    expect(screen.getByRole('button', { name: 'Clocking in…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('Saving attendance…');
     resolveClockIn();
     expect(await screen.findByRole('button', { name: 'Clock in' })).toBeEnabled();
   });
@@ -93,6 +94,14 @@ describe('TodayView', () => {
 
     expect(screen.getByText(/August 16, 2026/)).toBeVisible();
     expect(screen.queryByText('08:43')).not.toBeInTheDocument();
+  });
+
+  it('explains the one-record-per-day limit instead of offering an invalid second clock-in', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 7, 15, 18));
+    render(<TodayView snapshot={{ ...idleSnapshot, state: { entries: [{ date: '2026-08-15', clockIn: '09:00', clockOut: '17:00' }] } }} onClockIn={vi.fn()} onClockOut={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Day completed' })).toBeDisabled();
+    expect(screen.getByText(/correct today’s entry in History/)).toBeVisible();
   });
 
   it('derives elapsed time from the clock-in timestamp on each tick and cleans up its interval', () => {

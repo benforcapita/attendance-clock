@@ -3,6 +3,7 @@ import { BrowserFileAdapter, FilePermissionError } from './fileAdapter';
 
 const originalSavePicker = window.showSaveFilePicker;
 const originalOpenPicker = window.showOpenFilePicker;
+const originalDirectoryPicker = window.showDirectoryPicker;
 const originalCreateObjectUrl = URL.createObjectURL;
 const originalRevokeObjectUrl = URL.revokeObjectURL;
 const originalShare = navigator.share;
@@ -15,6 +16,7 @@ afterEach(() => {
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: originalRevokeObjectUrl });
   Object.defineProperty(navigator, 'share', { configurable: true, value: originalShare });
   Object.defineProperty(navigator, 'canShare', { configurable: true, value: originalCanShare });
+  Object.defineProperty(window, 'showDirectoryPicker', { configurable: true, value: originalDirectoryPicker });
   document.body.replaceChildren();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -29,6 +31,22 @@ function setOpenPicker(value: unknown): void {
 }
 
 describe('BrowserFileAdapter', () => {
+  it('reads an existing folder CSV before any overwrite can occur', async () => {
+    const existing = { getFile: vi.fn().mockResolvedValue({ text: async () => 'existing csv' }) };
+    const handle = { name: 'Records', getFileHandle: vi.fn().mockResolvedValue(existing) };
+    Object.defineProperty(window, 'showDirectoryPicker', { configurable: true, value: vi.fn().mockResolvedValue(handle) });
+    await expect(new BrowserFileAdapter().chooseFolder()).resolves.toEqual({ name: 'Records', handle, existingCsv: 'existing csv' });
+    expect(handle.getFileHandle).toHaveBeenCalledWith('attendance.csv');
+  });
+
+  it('allows a folder without an attendance CSV but propagates unreadable files', async () => {
+    const handle = { name: 'Records', getFileHandle: vi.fn().mockRejectedValue(new DOMException('not found', 'NotFoundError')) };
+    Object.defineProperty(window, 'showDirectoryPicker', { configurable: true, value: vi.fn().mockResolvedValue(handle) });
+    await expect(new BrowserFileAdapter().chooseFolder()).resolves.toEqual({ name: 'Records', handle });
+    handle.getFileHandle.mockRejectedValue(new DOMException('not allowed', 'NotAllowedError'));
+    await expect(new BrowserFileAdapter().chooseFolder()).rejects.toThrow('not allowed');
+  });
+
   it('detects direct file access only when both browser pickers are available', () => {
     setSavePicker(vi.fn());
     setOpenPicker(vi.fn());
@@ -98,12 +116,13 @@ describe('BrowserFileAdapter', () => {
     await expect(new BrowserFileAdapter().writeDirect(handle as never, 'csv')).rejects.toBeInstanceOf(FilePermissionError);
   });
 
-  it('preserves a primary write failure when closing the stream also fails', async () => {
+  it('aborts a failed write without committing partial CSV content', async () => {
     const writeFailure = new DOMException('revoked', 'NotAllowedError');
-    const closeFailure = new Error('close failed');
+    const abortFailure = new Error('abort failed');
     const writable = {
       write: vi.fn().mockRejectedValue(writeFailure),
-      close: vi.fn().mockRejectedValue(closeFailure),
+      close: vi.fn(),
+      abort: vi.fn().mockRejectedValue(abortFailure),
     };
     const handle = {
       queryPermission: vi.fn().mockResolvedValue('granted'),
@@ -111,7 +130,8 @@ describe('BrowserFileAdapter', () => {
     };
 
     await expect(new BrowserFileAdapter().writeDirect(handle as never, 'csv')).rejects.toBeInstanceOf(FilePermissionError);
-    expect(writable.close).toHaveBeenCalledOnce();
+    expect(writable.abort).toHaveBeenCalledOnce();
+    expect(writable.close).not.toHaveBeenCalled();
   });
 
   it('maps a permission denial while closing a successfully written stream to a typed error', async () => {

@@ -96,6 +96,13 @@ export function clockOut(state: AttendanceState, now: Date): AttendanceState {
   const active = state.entries.find((entry) => entry.clockOut === null);
   if (!active) throw new DomainError('no active attendance session');
   const clockOutValue = formatTime(now);
+  // CSV has no end-date column. Compare wall-clock minutes so closing a stale
+  // session cannot silently turn several days into a short overnight shift.
+  const start = Date.parse(`${active.date}T${active.clockIn}:00Z`);
+  const end = Date.parse(`${formatDate(now)}T${clockOutValue}:00Z`);
+  const minutes = (end - start) / 60_000;
+  if (minutes < 0) throw new DomainError('Cannot clock out before clock-in. Correct the entry in History.', 'clockOut');
+  if (minutes >= 24 * 60) throw new DomainError('This session is at least 24 hours long. Correct the entry in History before clocking out.', 'clockOut');
   return { entries: sorted(state.entries.map((entry) => entry === active ? { ...entry, clockOut: clockOutValue } : { ...entry })) };
 }
 
